@@ -1,15 +1,10 @@
 import 'dart:convert';
-import 'dart:io';
-import 'package:ai_watcher/Staff/view_question.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
-import 'package:image_picker/image_picker.dart';
 
-import 'staff_home.dart';
-
-// ─── Theme (same as all pages) ────────────────────────────────────────────────
+// ─── Theme (matches your app) ─────────────────────────────────────────────────
 const _primary      = Color(0xFF194569);
 const _primaryLight = Color(0xFF2A6096);
 const _bg           = Color(0xFFF0F4F8);
@@ -17,980 +12,819 @@ const _card         = Colors.white;
 const _text         = Color(0xFF0D1F2D);
 const _sub          = Color(0xFF607D8B);
 const _divider      = Color(0xFFE8EEF4);
+const _aiPurple     = Color(0xFF6A11CB);
+const _aiBlue       = Color(0xFF2575FC);
 // ─────────────────────────────────────────────────────────────────────────────
 
-void main() {
-  runApp(const add_question(title: ''));
-}
-
-class add_question extends StatefulWidget {
-  const add_question({super.key, required this.title});
+class ai_question_generator extends StatefulWidget {
+  const ai_question_generator({super.key, required this.title});
   final String title;
 
   @override
-  State<add_question> createState() => _add_questionState();
+  State<ai_question_generator> createState() => _ai_question_generatorState();
 }
 
-class _add_questionState extends State<add_question> {
+class _ai_question_generatorState extends State<ai_question_generator>
+    with TickerProviderStateMixin {
 
-  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  final TextEditingController _questiontextController = TextEditingController();
-  final TextEditingController _opt1textController     = TextEditingController();
-  final TextEditingController _opt2textController     = TextEditingController();
-  final TextEditingController _opt3textController     = TextEditingController();
-  final TextEditingController _opt4textController     = TextEditingController();
-  final TextEditingController _anstextController      = TextEditingController();
+  final TextEditingController _contentController = TextEditingController();
+  int _questionCount = 5;
+  bool _isGenerating = false;
 
-  File? _selectedImage;
+  // Each generated question
+  List<Map<String, dynamic>> _generatedQuestions = [];
 
-  Future<void> _chooseImage() async {
-    final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      setState(() {
-        _selectedImage = File(pickedFile.path);
-      });
-    } else {
-      Fluttertoast.showToast(msg: "No image selected");
-    }
+  // Which questions the user has checked
+  Set<int> _selectedIndexes = {};
+
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+    _pulseAnim = Tween<double>(begin: 0.85, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
   }
 
-  Future<void> _sendData() async {
-    String uquestion = _questiontextController.text;
-    String uopt1     = _opt1textController.text;
-    String uopt2     = _opt2textController.text;
-    String uopt3     = _opt3textController.text;
-    String uopt4     = _opt4textController.text;
-    String uans      = _anstextController.text;
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    _contentController.dispose();
+    super.dispose();
+  }
 
-    SharedPreferences sh = await SharedPreferences.getInstance();
-    String? url  = sh.getString('url');
-    String? exam = sh.getString('exam');
-
-    if (url == null) {
-      Fluttertoast.showToast(msg: "Server URL not found.");
+  // ── Call Claude API ──────────────────────────────────────────────────────
+  Future<void> _generateQuestions() async {
+    final content = _contentController.text.trim();
+    if (content.isEmpty) {
+      Fluttertoast.showToast(msg: "Please enter some content first.");
       return;
     }
 
-    final uri     = Uri.parse('$url/examineraddquestion/');
-    var   request = http.MultipartRequest('POST', uri);
-    request.fields['question'] = uquestion;
-    request.fields['option1']  = uopt1;
-    request.fields['option2']  = uopt2;
-    request.fields['option3']  = uopt3;
-    request.fields['option4']  = uopt4;
-    request.fields['answer']   = uans;
-    request.fields['aid']      = exam.toString();
-
-    if (_selectedImage != null) {
-      request.files.add(
-          await http.MultipartFile.fromPath('photo', _selectedImage!.path));
-    }
+    setState(() {
+      _isGenerating = true;
+      _generatedQuestions = [];
+      _selectedIndexes = {};
+    });
 
     try {
-      var response = await request.send();
-      var respStr  = await response.stream.bytesToString();
+      SharedPreferences sh = await SharedPreferences.getInstance();
+      String url = sh.getString('url') ?? '';
+
+      final uri = Uri.parse('$url/generate-ai-questions/');
+      var request = http.MultipartRequest('POST', uri);
+      request.fields['topic']      = content;
+      request.fields['count']      = '$_questionCount';
+      request.fields['difficulty'] = 'Medium';
+      request.fields['api_key']    = 'AIzaSyCdJgVWVtW9P7-Nh9DvFIwqcMNa_-qwYtI'
+          ''
+          ''
+          ''
+          ''
+          ''
+          '';
+
+      var res      = await request.send();
+      var respStr  = await res.stream.bytesToString();
       var data     = jsonDecode(respStr);
 
-      if (response.statusCode == 200 && data['status'] == 'ok') {
-        Fluttertoast.showToast(msg: "Submitted successfully.");
-        Navigator.push(context,
-            MaterialPageRoute(builder: (context) => view_question(title: '')));
+      if (data['status'] == 'ok') {
+        final List<dynamic> parsed = data['questions'];
+        setState(() {
+          _generatedQuestions = parsed
+              .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
+              .toList();
+          _selectedIndexes = Set<int>.from(
+              List.generate(_generatedQuestions.length, (i) => i));
+        });
       } else {
-        Fluttertoast.showToast(msg: "Submission failed.");
+        Fluttertoast.showToast(
+            msg: "Error: ${data['message'] ?? 'Generation failed'}");
       }
     } catch (e) {
       Fluttertoast.showToast(msg: "Error: $e");
+    } finally {
+      setState(() => _isGenerating = false);
     }
   }
+  // ── Save selected questions to backend ──────────────────────────────────
+  Future<void> _saveSelectedQuestions() async {
+    if (_selectedIndexes.isEmpty) {
+      Fluttertoast.showToast(msg: "Please select at least one question.");
+      return;
+    }
 
-  // ── Section header ────────────────────────────────────────────────────────
-  Widget _sectionHeader(String title, IconData icon) {
+    SharedPreferences sh = await SharedPreferences.getInstance();
+    String? url  = sh.getString('url');
+    String? exam = sh.getString('exam'); // ← this is the allocated exam id
+
+    if (url == null || exam == null) {
+      Fluttertoast.showToast(msg: "Server URL or exam not found.");
+      return;
+    }
+
+    int successCount = 0;
+
+    for (int i in _selectedIndexes) {
+      final q = _generatedQuestions[i];
+      try {
+        final uri = Uri.parse('$url/examineraddquestion/'); // ✅ correct endpoint
+        var request = http.MultipartRequest('POST', uri);
+        request.fields['aid']      = exam;        // ✅ backend uses 'aid' not 'exam'
+        request.fields['question'] = q['question'];
+        request.fields['option1']  = q['option1'];
+        request.fields['option2']  = q['option2'];
+        request.fields['option3']  = q['option3'];
+        request.fields['option4']  = q['option4'];
+        request.fields['answer']   = q['answer'];
+
+        var res = await request.send();
+        if (res.statusCode == 200) successCount++;
+      } catch (_) {}
+    }
+
+    Fluttertoast.showToast(
+        msg: "$successCount question(s) saved successfully!");
+
+    if (successCount > 0) Navigator.pop(context);
+  }
+  // ── Option chip widget ───────────────────────────────────────────────────
+  Widget _optionChip(String letter, String text, bool isAnswer) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14, top: 4),
+      padding: const EdgeInsets.only(bottom: 6),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 32, height: 32,
+            width: 24, height: 24,
+            margin: const EdgeInsets.only(right: 8, top: 1),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [_primary, _primaryLight],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(9),
+              color: isAnswer
+                  ? _primary.withOpacity(0.15)
+                  : _primary.withOpacity(0.07),
+              borderRadius: BorderRadius.circular(7),
+              border: Border.all(
+                  color: isAnswer
+                      ? _primary.withOpacity(0.5)
+                      : _primary.withOpacity(0.15)),
             ),
-            child: Icon(icon, color: Colors.white, size: 16),
+            child: Center(
+              child: Text(letter,
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: isAnswer ? _primary : _sub)),
+            ),
           ),
-          const SizedBox(width: 10),
-          Text(title,
-              style: const TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.w700, color: _text)),
+          Expanded(
+            child: Text(text,
+                style: TextStyle(
+                    fontSize: 13,
+                    color: isAnswer ? _primary : _text,
+                    fontWeight:
+                    isAnswer ? FontWeight.w600 : FontWeight.normal,
+                    height: 1.4)),
+          ),
+          if (isAnswer)
+            const Icon(Icons.check_circle_rounded,
+                color: _primary, size: 16),
         ],
       ),
     );
   }
 
-  // ── Input field ───────────────────────────────────────────────────────────
-  Widget _buildField({
-    required TextEditingController controller,
-    required String label,
-    required IconData icon,
-    int maxLines = 1,
-    bool readOnly = false,
-    VoidCallback? onTap,
-    String? Function(String?)? validator,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label,
-            style: const TextStyle(
-                fontSize: 12, fontWeight: FontWeight.w600, color: _text)),
-        const SizedBox(height: 7),
-        Container(
-          decoration: BoxDecoration(
-            color: readOnly ? _primary.withOpacity(0.05) : _bg,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: readOnly
-                  ? _primary.withOpacity(0.25)
-                  : _primary.withOpacity(0.15),
-            ),
-          ),
-          child: TextFormField(
-            controller: controller,
-            maxLines: maxLines,
-            readOnly: readOnly,
-            onTap: onTap,
-            style: const TextStyle(fontSize: 14, color: _text),
-            decoration: InputDecoration(
-              hintText: 'Enter $label',
-              hintStyle:
-              TextStyle(color: _sub.withOpacity(0.6), fontSize: 13),
-              prefixIcon:
-              Icon(icon, color: _primary.withOpacity(0.6), size: 20),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 14),
-              errorStyle: const TextStyle(fontSize: 11),
-            ),
-            validator: validator,
-          ),
-        ),
-        const SizedBox(height: 14),
-      ],
-    );
-  }
-
-  // ── Option tile with tap-to-select-as-answer ──────────────────────────────
-  Widget _buildOptionTile({
-    required String label,
-    required TextEditingController controller,
-    required String optionLetter,
-  }) {
-    final isSelected = _anstextController.text.isNotEmpty &&
-        _anstextController.text == controller.text &&
-        controller.text.isNotEmpty;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label,
-            style: const TextStyle(
-                fontSize: 12, fontWeight: FontWeight.w600, color: _text)),
-        const SizedBox(height: 7),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Option letter badge
-            Container(
-              width: 40, height: 40,
-              margin: const EdgeInsets.only(top: 2, right: 10),
-              decoration: BoxDecoration(
-                gradient: isSelected
-                    ? const LinearGradient(
-                  colors: [_primary, _primaryLight],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                )
-                    : null,
-                color: isSelected ? null : _bg,
-                borderRadius: BorderRadius.circular(11),
-                border: Border.all(
-                  color: isSelected ? _primary : _divider,
-                  width: isSelected ? 1.5 : 1,
-                ),
-              ),
-              child: Center(
-                child: Text(optionLetter,
-                    style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: isSelected ? Colors.white : _sub)),
-              ),
-            ),
-
-            // Text field
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: isSelected ? _primary.withOpacity(0.05) : _bg,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: isSelected ? _primary : _primary.withOpacity(0.15),
-                    width: isSelected ? 1.6 : 1,
-                  ),
-                ),
-                child: TextFormField(
-                  controller: controller,
-                  maxLines: 2,
-                  // ── onTap: original logic — set answer = this option ──
-                  onTap: () {
-                    setState(() {
-                      _anstextController.text = controller.text;
-                    });
-                  },
-                  onChanged: (v) {
-                    // If this option is currently selected as answer, update answer too
-                    if (_anstextController.text == v ||
-                        _anstextController.text.isEmpty) {
-                      setState(() {});
-                    } else {
-                      setState(() {});
-                    }
-                  },
-                  style: TextStyle(
-                      fontSize: 14,
-                      color: isSelected ? _primary : _text,
-                      fontWeight: isSelected
-                          ? FontWeight.w600
-                          : FontWeight.normal),
-                  decoration: InputDecoration(
-                    hintText: 'Type option $optionLetter...',
-                    hintStyle: TextStyle(
-                        color: _sub.withOpacity(0.6), fontSize: 13),
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 12),
-                    suffixIcon: isSelected
-                        ? Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: Icon(Icons.check_circle_rounded,
-                          color: _primary, size: 20),
-                    )
-                        : null,
-                    errorStyle: const TextStyle(fontSize: 11),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Option $optionLetter is required';
-                    }
-                    return null;
-                  },
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const staff_home()),
-        );
-        return false;
-      },
-      child: Scaffold(
-        backgroundColor: _bg,
-        body: Column(
-          children: [
+    return Scaffold(
+      backgroundColor: _bg,
+      body: Column(
+        children: [
 
-            // ── Gradient Header ──────────────────────────────────────────
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(20, 54, 20, 28),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [_primary, _primaryLight],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.only(
-                  bottomLeft:  Radius.circular(32),
-                  bottomRight: Radius.circular(32),
-                ),
+          // ── Gradient Header ──────────────────────────────────────────────
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(20, 54, 20, 24),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [_aiPurple, _aiBlue],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              child: Stack(
-                children: [
-                  // Decorative circles
-                  Positioned(
-                    top: -30, right: -20,
-                    child: Container(
-                      width: 120, height: 120,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withOpacity(0.06),
-                      ),
+              borderRadius: BorderRadius.only(
+                bottomLeft:  Radius.circular(32),
+                bottomRight: Radius.circular(32),
+              ),
+            ),
+            child: Stack(
+              children: [
+                Positioned(
+                  top: -30, right: -20,
+                  child: Container(
+                    width: 120, height: 120,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withOpacity(0.06),
                     ),
                   ),
-                  Positioned(
-                    top: 8, right: 35,
-                    child: Container(
-                      width: 55, height: 55,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withOpacity(0.08),
-                      ),
+                ),
+                Positioned(
+                  top: 8, right: 35,
+                  child: Container(
+                    width: 55, height: 55,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withOpacity(0.08),
                     ),
                   ),
-
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Back + title
-                      Row(
-                        children: [
-                          GestureDetector(
-                            onTap: () => Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => const staff_home()),
-                            ),
-                            child: Container(
-                              width: 38, height: 38,
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(11),
-                                border: Border.all(
-                                    color: Colors.white.withOpacity(0.2)),
-                              ),
-                              child: const Icon(Icons.arrow_back_ios_new,
-                                  color: Colors.white, size: 16),
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Add Question',
-                                    style: TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w800,
-                                        color: Colors.white)),
-                                Text('Fill in question and options below',
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.white60)),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            width: 40, height: 40,
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        GestureDetector(
+                          onTap: () => Navigator.pop(context),
+                          child: Container(
+                            width: 38, height: 38,
                             decoration: BoxDecoration(
                               color: Colors.white.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(11),
                               border: Border.all(
                                   color: Colors.white.withOpacity(0.2)),
                             ),
-                            child: const Icon(Icons.quiz_outlined,
-                                color: Colors.white, size: 20),
+                            child: const Icon(Icons.arrow_back_ios_new,
+                                color: Colors.white, size: 16),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('AI Question Generator',
+                                  style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white)),
+                              Text('Generate MCQs from your content',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.white60)),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          width: 40, height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                                color: Colors.white.withOpacity(0.2)),
+                          ),
+                          child: const Icon(Icons.auto_awesome,
+                              color: Colors.white, size: 20),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // ── Body ─────────────────────────────────────────────────────────
+          Expanded(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 120),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+
+                  // ── Content input card ──────────────────────────────────
+                  Container(
+                    decoration: BoxDecoration(
+                      color: _card,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: _divider),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _aiPurple.withOpacity(0.07),
+                          blurRadius: 14,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                    colors: [_aiPurple, _aiBlue]),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(Icons.article_outlined,
+                                  color: Colors.white, size: 16),
+                            ),
+                            const SizedBox(width: 10),
+                            const Text('Paste Your Content',
+                                style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                    color: _text)),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _contentController,
+                          maxLines: 6,
+                          style: const TextStyle(
+                              fontSize: 13, color: _text, height: 1.5),
+                          decoration: InputDecoration(
+                            hintText:
+                            'Paste or type your topic/paragraph here...\n\nExample: "Photosynthesis is the process by which plants use sunlight..."',
+                            hintStyle: TextStyle(
+                                color: _sub.withOpacity(0.6),
+                                fontSize: 12,
+                                height: 1.5),
+                            filled: true,
+                            fillColor: _bg,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide:
+                              BorderSide(color: _divider),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: _divider),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide:
+                              const BorderSide(color: _aiPurple),
+                            ),
+                            contentPadding: const EdgeInsets.all(14),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // ── Question count selector ─────────────────────────────
+                  Container(
+                    decoration: BoxDecoration(
+                      color: _card,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: _divider),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _aiPurple.withOpacity(0.07),
+                          blurRadius: 14,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                    colors: [_aiPurple, _aiBlue]),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(Icons.format_list_numbered,
+                                  color: Colors.white, size: 16),
+                            ),
+                            const SizedBox(width: 10),
+                            const Text('Number of Questions',
+                                style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                    color: _text)),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [5, 10].map((count) {
+                            final selected = _questionCount == count;
+                            return Expanded(
+                              child: GestureDetector(
+                                onTap: () =>
+                                    setState(() => _questionCount = count),
+                                child: Container(
+                                  margin: EdgeInsets.only(
+                                      right: count == 5 ? 8 : 0),
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 14),
+                                  decoration: BoxDecoration(
+                                    gradient: selected
+                                        ? const LinearGradient(
+                                        colors: [_aiPurple, _aiBlue])
+                                        : null,
+                                    color: selected ? null : _bg,
+                                    borderRadius:
+                                    BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: selected
+                                          ? Colors.transparent
+                                          : _divider,
+                                    ),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Text('$count',
+                                          style: TextStyle(
+                                              fontSize: 22,
+                                              fontWeight: FontWeight.w800,
+                                              color: selected
+                                                  ? Colors.white
+                                                  : _sub)),
+                                      Text('Questions',
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              color: selected
+                                                  ? Colors.white70
+                                                  : _sub)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // ── Generate Button ─────────────────────────────────────
+                  GestureDetector(
+                    onTap: _isGenerating ? null : _generateQuestions,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [_aiPurple, _aiBlue],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: _aiPurple.withOpacity(0.35),
+                            blurRadius: 14,
+                            offset: const Offset(0, 5),
                           ),
                         ],
                       ),
-
-                      const SizedBox(height: 20),
-
-                      // ── Tip banner ───────────────────────────────────
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 11),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.13),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                              color: Colors.white.withOpacity(0.2)),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.touch_app_outlined,
-                                color: Colors.white70, size: 18),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                'Tap any option field to set it as the correct answer',
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.white.withOpacity(0.8),
-                                    height: 1.4),
-                              ),
-                            ),
-                          ],
-                        ),
+                      child: _isGenerating
+                          ? Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          ScaleTransition(
+                            scale: _pulseAnim,
+                            child: const Icon(Icons.auto_awesome,
+                                color: Colors.white, size: 20),
+                          ),
+                          const SizedBox(width: 10),
+                          const Text('Generating Questions...',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700)),
+                        ],
+                      )
+                          : const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.auto_awesome,
+                              color: Colors.white, size: 20),
+                          SizedBox(width: 10),
+                          Text('Generate Questions',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700)),
+                        ],
                       ),
-                    ],
+                    ),
+                  ),
+
+                  // ── Generated Questions ─────────────────────────────────
+                  if (_generatedQuestions.isNotEmpty) ...[
+                    const SizedBox(height: 24),
+
+                    // Header row with select-all
+                    Row(
+                      children: [
+                        const Text('Generated Questions',
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: _text)),
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              if (_selectedIndexes.length ==
+                                  _generatedQuestions.length) {
+                                _selectedIndexes.clear();
+                              } else {
+                                _selectedIndexes = Set<int>.from(
+                                    List.generate(
+                                        _generatedQuestions.length,
+                                            (i) => i));
+                              }
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: _aiPurple.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                  color: _aiPurple.withOpacity(0.3)),
+                            ),
+                            child: Text(
+                              _selectedIndexes.length ==
+                                  _generatedQuestions.length
+                                  ? 'Deselect All'
+                                  : 'Select All',
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: _aiPurple),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    Text(
+                      '${_selectedIndexes.length} of ${_generatedQuestions.length} selected',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: _sub.withOpacity(0.7)),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    // Question cards
+                    ...List.generate(_generatedQuestions.length, (index) {
+                      final q = _generatedQuestions[index];
+                      final isSelected = _selectedIndexes.contains(index);
+                      final opts = [
+                        q['option1'] ?? '',
+                        q['option2'] ?? '',
+                        q['option3'] ?? '',
+                        q['option4'] ?? '',
+                      ];
+                      final labels = ['A', 'B', 'C', 'D'];
+
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            if (isSelected) {
+                              _selectedIndexes.remove(index);
+                            } else {
+                              _selectedIndexes.add(index);
+                            }
+                          });
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          margin: const EdgeInsets.only(bottom: 14),
+                          decoration: BoxDecoration(
+                            color: _card,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: isSelected
+                                  ? _aiPurple.withOpacity(0.5)
+                                  : _divider,
+                              width: isSelected ? 1.8 : 1,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: isSelected
+                                    ? _aiPurple.withOpacity(0.12)
+                                    : _primary.withOpacity(0.06),
+                                blurRadius: 14,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+
+                                // Question number + checkbox row
+                                Row(
+                                  crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      width: 32, height: 32,
+                                      margin: const EdgeInsets.only(
+                                          right: 10),
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: isSelected
+                                              ? [_aiPurple, _aiBlue]
+                                              : [_sub, _sub],
+                                        ),
+                                        borderRadius:
+                                        BorderRadius.circular(9),
+                                      ),
+                                      child: Center(
+                                        child: Text('${index + 1}',
+                                            style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 12,
+                                                fontWeight:
+                                                FontWeight.w800)),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Text(
+                                          q['question'] ?? '',
+                                          style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w700,
+                                              color: _text,
+                                              height: 1.4)),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    AnimatedContainer(
+                                      duration: const Duration(
+                                          milliseconds: 200),
+                                      width: 24, height: 24,
+                                      decoration: BoxDecoration(
+                                        gradient: isSelected
+                                            ? const LinearGradient(
+                                            colors: [
+                                              _aiPurple,
+                                              _aiBlue
+                                            ])
+                                            : null,
+                                        color: isSelected
+                                            ? null
+                                            : Colors.transparent,
+                                        borderRadius:
+                                        BorderRadius.circular(7),
+                                        border: Border.all(
+                                          color: isSelected
+                                              ? Colors.transparent
+                                              : _divider,
+                                          width: 1.5,
+                                        ),
+                                      ),
+                                      child: isSelected
+                                          ? const Icon(Icons.check,
+                                          color: Colors.white,
+                                          size: 14)
+                                          : null,
+                                    ),
+                                  ],
+                                ),
+
+                                const SizedBox(height: 12),
+                                Divider(color: _divider, height: 1),
+                                const SizedBox(height: 10),
+
+                                // Options
+                                ...List.generate(4, (i) => _optionChip(
+                                  labels[i],
+                                  opts[i],
+                                  opts[i] == q['answer'],
+                                )),
+
+                                const SizedBox(height: 6),
+
+                                // Answer badge
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        _aiPurple.withOpacity(0.08),
+                                        _aiBlue.withOpacity(0.05),
+                                      ],
+                                    ),
+                                    borderRadius:
+                                    BorderRadius.circular(10),
+                                    border: Border.all(
+                                        color:
+                                        _aiPurple.withOpacity(0.2)),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                          Icons.check_circle_rounded,
+                                          color: _aiPurple,
+                                          size: 16),
+                                      const SizedBox(width: 8),
+                                      const Text('Answer: ',
+                                          style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: _sub)),
+                                      Expanded(
+                                        child: Text(
+                                            q['answer'] ?? '',
+                                            style: const TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w700,
+                                                color: _aiPurple)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+
+      // ── Save FAB ────────────────────────────────────────────────────────
+      floatingActionButton: _generatedQuestions.isNotEmpty
+          ? Container(
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [_aiPurple, _aiBlue],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: _aiPurple.withOpacity(0.4),
+              blurRadius: 12,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: _saveSelectedQuestions,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 20, vertical: 14),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.save_alt_rounded,
+                      color: Colors.white, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Save ${_selectedIndexes.length} Question${_selectedIndexes.length == 1 ? '' : 's'}',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700),
                   ),
                 ],
               ),
             ),
-
-            // ── Form body ─────────────────────────────────────────────────
-            Expanded(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 20, 16, 60),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-
-                      // ── Question card ────────────────────────────────
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: _card,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: _divider),
-                          boxShadow: [
-                            BoxShadow(
-                              color: _primary.withOpacity(0.07),
-                              blurRadius: 14,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _sectionHeader('Question', Icons.help_outline_rounded),
-                            _buildField(
-                              controller: _questiontextController,
-                              label: 'Question Text',
-                              icon: Icons.edit_note_rounded,
-                              maxLines: 3,
-                              validator: (value) {
-                                if (value == null || value.trim().isEmpty)
-                                  return 'Question is required';
-                                return null;
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // ── Options card ─────────────────────────────────
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: _card,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: _divider),
-                          boxShadow: [
-                            BoxShadow(
-                              color: _primary.withOpacity(0.07),
-                              blurRadius: 14,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _sectionHeader(
-                                'Options  •  Tap to mark as Answer',
-                                Icons.list_alt_outlined),
-
-                            _buildOptionTile(
-                              label: 'Option A',
-                              controller: _opt1textController,
-                              optionLetter: 'A',
-                            ),
-                            _buildOptionTile(
-                              label: 'Option B',
-                              controller: _opt2textController,
-                              optionLetter: 'B',
-                            ),
-                            _buildOptionTile(
-                              label: 'Option C',
-                              controller: _opt3textController,
-                              optionLetter: 'C',
-                            ),
-                            _buildOptionTile(
-                              label: 'Option D',
-                              controller: _opt4textController,
-                              optionLetter: 'D',
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // ── Selected answer display card ──────────────────
-                      Container(
-                        padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              _primary.withOpacity(0.06),
-                              _primaryLight.withOpacity(0.04),
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                              color: _primary.withOpacity(0.18)),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 44, height: 44,
-                              decoration: BoxDecoration(
-                                gradient: _anstextController.text.isNotEmpty
-                                    ? const LinearGradient(
-                                  colors: [_primary, _primaryLight],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                )
-                                    : null,
-                                color: _anstextController.text.isEmpty
-                                    ? _divider
-                                    : null,
-                                borderRadius: BorderRadius.circular(13),
-                              ),
-                              child: Icon(
-                                _anstextController.text.isNotEmpty
-                                    ? Icons.check_circle_rounded
-                                    : Icons.radio_button_unchecked,
-                                color: _anstextController.text.isNotEmpty
-                                    ? Colors.white
-                                    : _sub,
-                                size: 22,
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text('Correct Answer',
-                                      style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                          color: _sub)),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    _anstextController.text.isNotEmpty
-                                        ? _anstextController.text
-                                        : 'Tap an option above to select answer',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight:
-                                      _anstextController.text.isNotEmpty
-                                          ? FontWeight.w700
-                                          : FontWeight.w400,
-                                      color: _anstextController.text.isNotEmpty
-                                          ? _primary
-                                          : _sub.withOpacity(0.6),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      // Hidden answer validator field
-                      Opacity(
-                        opacity: 0,
-                        child: SizedBox(
-                          height: 0,
-                          child: TextFormField(
-                            controller: _anstextController,
-                            readOnly: true,
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty)
-                                return 'Answer is required';
-                              return null;
-                            },
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 28),
-
-                      // ── Submit button ────────────────────────────────
-                      GestureDetector(
-                        onTap: () {
-                          if (_formKey.currentState!.validate()) {
-                            _sendData();
-                          } else {
-                            Fluttertoast.showToast(
-                                msg: "Please fix errors in the form");
-                          }
-                        },
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [_primary, _primaryLight],
-                              begin: Alignment.centerLeft,
-                              end: Alignment.centerRight,
-                            ),
-                            borderRadius: BorderRadius.circular(14),
-                            boxShadow: [
-                              BoxShadow(
-                                color: _primary.withOpacity(0.35),
-                                blurRadius: 12,
-                                offset: const Offset(0, 5),
-                              ),
-                            ],
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.check_circle_outline,
-                                  color: Colors.white, size: 18),
-                              SizedBox(width: 10),
-                              Text('Submit Question',
-                                  style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w700)),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 14),
-
-                      // ── Cancel button ────────────────────────────────
-                      GestureDetector(
-                        onTap: () => Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const staff_home()),
-                        ),
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 15),
-                          decoration: BoxDecoration(
-                            color: _card,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                                color: _primary.withOpacity(0.25),
-                                width: 1.5),
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.close_rounded,
-                                  color: _primary, size: 18),
-                              SizedBox(width: 10),
-                              Text('Cancel',
-                                  style: TextStyle(
-                                      color: _primary,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w700)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
+      )
+          : null,
     );
   }
 }
-
-
-
-
-
-
-
-
-
-// import 'dart:convert';
-// import 'dart:io';
-// import 'package:ai_watcher/Staff/view_question.dart';
-// import 'package:flutter/material.dart';
-// import 'package:fluttertoast/fluttertoast.dart';
-// import 'package:shared_preferences/shared_preferences.dart';
-// import 'package:http/http.dart' as http;
-// import 'package:image_picker/image_picker.dart';
-//
-// import 'staff_home.dart';
-//
-//
-//
-// void main() {
-//   runApp( add_question(title: '',));
-// }
-//
-// class add_question extends StatefulWidget {
-//   const add_question({super.key, required this.title});
-//
-//   final String title;
-//   @override
-//   State<add_question> createState() => _add_questionState();
-//
-// }
-// class _add_questionState extends State<add_question> {
-//
-//   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-//   final TextEditingController _questiontextController = TextEditingController();
-//   final TextEditingController _opt1textController = TextEditingController();
-//   final TextEditingController _opt2textController = TextEditingController();
-//   final TextEditingController _opt3textController = TextEditingController();
-//   final TextEditingController _opt4textController = TextEditingController();
-//   final TextEditingController _anstextController = TextEditingController();
-//
-//   File? _selectedImage;
-//   Future<void> _chooseImage() async {
-//     final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
-//     if (pickedFile != null) {
-//       setState(() {
-//         _selectedImage = File(pickedFile.path);
-//       });
-//     }
-//     else {
-//       Fluttertoast.showToast(msg: "No image selected");
-//     }
-//   }
-//
-//   Future<void> _sendData() async {
-//     String uquestion = _questiontextController.text;
-//     String uopt1 = _opt1textController.text;
-//     String uopt2 = _opt2textController.text;
-//     String uopt3 = _opt3textController.text;
-//     String uopt4 = _opt4textController.text;
-//     String uans = _anstextController.text;
-//
-//     SharedPreferences sh = await SharedPreferences.getInstance();
-//     String? url = sh.getString('url');
-//     String? exam = sh.getString('exam');
-//
-//     if (url == null) {
-//       Fluttertoast.showToast(msg: "Server URL not found.");
-//       return;
-//     }
-//
-//     final uri = Uri.parse('$url/examineraddquestion/');
-//     var request = http.MultipartRequest('POST', uri);
-//     request.fields['question'] = uquestion;
-//     request.fields['option1'] = uopt1;
-//     request.fields['option2'] = uopt2;
-//     request.fields['option3'] = uopt3;
-//     request.fields['option4'] = uopt4;
-//     request.fields['answer'] = uans;
-//     request.fields['aid'] = exam.toString();
-//
-//     if (_selectedImage != null) {
-//       request.files.add(await http.MultipartFile.fromPath('photo', _selectedImage!.path));
-//     }
-//
-//     try {
-//       var response = await request.send();
-//       var respStr = await response.stream.bytesToString();
-//       var data = jsonDecode(respStr);
-//
-//       if (response.statusCode == 200 && data['status'] == 'ok') {
-//         Fluttertoast.showToast(msg: "Submitted successfully.");
-//         Navigator.push(context, MaterialPageRoute(builder: (context)=>view_question(title: '',)));
-//       } else {
-//         Fluttertoast.showToast(msg: "Submission failed.");
-//       }
-//     } catch (e) {
-//       Fluttertoast.showToast(msg: "Error: $e");
-//     }
-//   }
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return WillPopScope(
-//       onWillPop: () async {
-//         Navigator.pushReplacement(
-//           context,
-//           MaterialPageRoute(builder: (context) => const staff_home()),
-//         );
-//         return false;
-//       },
-//       child: Scaffold(
-//         appBar: AppBar(
-//           title: Text(widget.title),
-//           centerTitle: true,
-//           backgroundColor: Theme.of(context).colorScheme.primary,
-//           foregroundColor: Colors.white,
-//         ),
-//         body: SingleChildScrollView(
-//           padding: const EdgeInsets.all(16),
-//           child: Form(
-//             key: _formKey,
-//             child: Column(
-//               children: [
-//                 // _selectedImage != null
-//                 //     ? Image.file(_selectedImage!, height: 150)
-//                 //     : const Text("No Image Selected"),
-//                 // const SizedBox(height: 10),
-//                 // ElevatedButton(
-//                 //   onPressed: _chooseImage,
-//                 //   child: const Text("Choose Image"),
-//                 // ),
-//                 const SizedBox(height: 20),
-//                 TextFormField(
-//                   controller: _questiontextController,
-//                   maxLines: 2,
-//                   decoration: const InputDecoration(
-//
-//                     labelText: 'Enter Your Question',
-//                     border: OutlineInputBorder(),
-//                   ),
-//                   validator: (value) {
-//                     if (value == null || value.trim().isEmpty) {
-//                       return 'Question is required';
-//                     }
-//                     return null;
-//                   },
-//                 ),
-//                 const SizedBox(height: 20),
-//                 TextFormField(
-//                   onTap: (){
-//                     setState(() {
-//                       _anstextController.text=_opt1textController.text;
-//                     });
-//                   },
-//                   controller: _opt1textController,
-//                   maxLines: 2,
-//                   decoration: const InputDecoration(
-//
-//                     labelText: 'Enter Your Option1',
-//                     border: OutlineInputBorder(),
-//                   ),
-//                   validator: (value) {
-//                     if (value == null || value.trim().isEmpty) {
-//                       return 'Option1 is required';
-//                     }
-//                     return null;
-//                   },
-//                 ),
-//                 const SizedBox(height: 20),
-//                 TextFormField(
-//                   onTap: (){
-//                     setState(() {
-//                       _anstextController.text=_opt2textController.text;
-//                     });
-//                   },
-//                   controller: _opt2textController,
-//                   maxLines: 2,
-//                   decoration: const InputDecoration(
-//
-//                     labelText: 'Enter Your Option2',
-//                     border: OutlineInputBorder(),
-//                   ),
-//                   validator: (value) {
-//                     if (value == null || value.trim().isEmpty) {
-//                       return 'Option2 is required';
-//                     }
-//                     return null;
-//                   },
-//                 ),
-//                 const SizedBox(height: 20),
-//                 TextFormField(
-//                   onTap: (){
-//                     setState(() {
-//                       _anstextController.text=_opt3textController.text;
-//                     });
-//                   },
-//                   controller: _opt3textController,
-//                   maxLines: 2,
-//                   decoration: const InputDecoration(
-//
-//                     labelText: 'Enter Your Option3',
-//                     border: OutlineInputBorder(),
-//                   ),
-//                   validator: (value) {
-//                     if (value == null || value.trim().isEmpty) {
-//                       return 'Option3 is required';
-//                     }
-//                     return null;
-//                   },
-//                 ),
-//                 const SizedBox(height: 20),
-//                 TextFormField(
-//                   onTap: (){
-//                     setState(() {
-//                       _anstextController.text=_opt4textController.text;
-//                     });
-//                   },
-//                   controller: _opt4textController,
-//                   maxLines: 2,
-//                   decoration: const InputDecoration(
-//
-//                     labelText: 'Enter Your Option4',
-//                     border: OutlineInputBorder(),
-//                   ),
-//                   validator: (value) {
-//                     if (value == null || value.trim().isEmpty) {
-//                       return 'Option4 is required';
-//                     }
-//                     return null;
-//                   },
-//                 ),
-//                 const SizedBox(height: 20),
-//                 TextFormField(
-//                   readOnly: true,
-//                   controller: _anstextController,
-//                   maxLines: 2,
-//                   decoration: const InputDecoration(
-//
-//                     labelText: 'Enter Your Answer',
-//                     border: OutlineInputBorder(),
-//                   ),
-//                   validator: (value) {
-//                     if (value == null || value.trim().isEmpty) {
-//                       return 'Answer is required';
-//                     }
-//                     return null;
-//                   },
-//                 ),
-//                 const SizedBox(height: 20),
-//                 ElevatedButton(
-//                   onPressed: () {
-//                     if (_formKey.currentState!.validate()) {
-//                       _sendData();
-//                     } else {
-//                       Fluttertoast.showToast(msg: "Please fix errors in the form");
-//                     }
-//                   },
-//                   child: const Text("Submit"),
-//                   style: ElevatedButton.styleFrom(
-//                     minimumSize: const Size.fromHeight(50),
-//                   ),
-//                 ),
-//               ],
-//             ),
-//           ),
-//         ),
-//       ),
-//     );
-//   }
-// }

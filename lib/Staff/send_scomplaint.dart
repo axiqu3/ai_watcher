@@ -1,17 +1,19 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:ai_watcher/Staff/view_question.dart';
+import 'package:ai_watcher/Staff/viewcomplaint.dart';
+import 'package:ai_watcher/candidate/viewreply.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
-
-import 'candidate_home.dart';
-import 'viewreply.dart';
+//
+// import 'candidate_home.dart';
+// import 'viewreply.dart';
 
 void main() {
-  runApp(CandidateSentReplay(title: ''));
+  runApp(staffsndcomplaint(title: ''));
 }
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
@@ -24,16 +26,16 @@ const _sub          = Color(0xFF607D8B);
 const _divider      = Color(0xFFE8EEF4);
 // ─────────────────────────────────────────────────────────────────────────────
 
-class CandidateSentReplay extends StatefulWidget {
-  const CandidateSentReplay({super.key, required this.title});
+class staffsndcomplaint extends StatefulWidget {
+  const staffsndcomplaint({super.key, required this.title});
 
   final String title;
 
   @override
-  State<CandidateSentReplay> createState() => _CandidateSentReplayState();
+  State<staffsndcomplaint> createState() => _staffsndcomplaintState();
 }
 
-class _CandidateSentReplayState extends State<CandidateSentReplay> {
+class _staffsndcomplaintState extends State<staffsndcomplaint> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _complainttextController = TextEditingController();
 
@@ -65,7 +67,7 @@ class _CandidateSentReplayState extends State<CandidateSentReplay> {
     final uri = Uri.parse('$url/usersentcomplaints/');
     var request = http.MultipartRequest('POST', uri);
     request.fields['complaint'] = ucomplaint;
-    request.fields['lid'] = lid!;
+    request.fields['lid'] = lid;
 
     try {
       var response = await request.send();
@@ -76,7 +78,7 @@ class _CandidateSentReplayState extends State<CandidateSentReplay> {
         Fluttertoast.showToast(msg: "Sent Complaint successfully.");
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => viewreplypage(title: '')),
+          MaterialPageRoute(builder: (context) => viewcomplaint(title: '',)),
         );
       } else {
         Fluttertoast.showToast(msg: "Sent Complaint failed.");
@@ -92,7 +94,7 @@ class _CandidateSentReplayState extends State<CandidateSentReplay> {
       onWillPop: () async {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const viewreplypage(title: '')),
+          MaterialPageRoute(builder: (context) => const viewcomplaint(title: '')),
         );
         return false;
       },
@@ -120,7 +122,7 @@ class _CandidateSentReplayState extends State<CandidateSentReplay> {
                     onTap: () => Navigator.pushReplacement(
                       context,
                       MaterialPageRoute(
-                          builder: (_) => const viewreplypage(title: '')),
+                          builder: (_) => const viewcomplaint(title: '')),
                     ),
                     child: Container(
                       width: 38, height: 38,
@@ -377,158 +379,3 @@ class _CandidateSentReplayState extends State<CandidateSentReplay> {
 
 
 
-
-// import 'dart:convert';
-// import 'dart:io';
-// import 'package:ai_watcher/Staff/view_question.dart';
-// import 'package:flutter/material.dart';
-// import 'package:fluttertoast/fluttertoast.dart';
-// import 'package:shared_preferences/shared_preferences.dart';
-// import 'package:http/http.dart' as http;
-// import 'package:image_picker/image_picker.dart';
-//
-// import 'candidate_home.dart';
-// import 'viewreply.dart';
-//
-//
-//
-// void main() {
-//   runApp( CandidateSentReplay(title: '',));
-// }
-//
-// class CandidateSentReplay extends StatefulWidget {
-//   const CandidateSentReplay({super.key, required this.title});
-//
-//   final String title;
-//   @override
-//   State<CandidateSentReplay> createState() => _CandidateSentReplayState();
-//
-// }
-// class _CandidateSentReplayState extends State<CandidateSentReplay> {
-//
-//   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-//   final TextEditingController _complainttextController = TextEditingController();
-//
-//
-//   File? _selectedImage;
-//   Future<void> _chooseImage() async {
-//     final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
-//     if (pickedFile != null) {
-//       setState(() {
-//         _selectedImage = File(pickedFile.path);
-//       });
-//     }
-//     else {
-//       Fluttertoast.showToast(msg: "No image selected");
-//     }
-//   }
-//
-//   Future<void> _sendData() async {
-//     String ucomplaint = _complainttextController.text;
-//
-//
-//     SharedPreferences sh = await SharedPreferences.getInstance();
-//     String? url = sh.getString('url');
-//     String? lid = sh.getString('lid').toString();
-//
-//     if (url == null) {
-//       Fluttertoast.showToast(msg: "Server URL not found.");
-//       return;
-//     }
-//
-//     final uri = Uri.parse('$url/usersentcomplaints/');
-//     var request = http.MultipartRequest('POST', uri);
-//     request.fields['complaint'] = ucomplaint;
-//     request.fields['lid'] = lid;
-//
-//
-//     // if (_selectedImage != null) {
-//     //   request.files.add(await http.MultipartFile.fromPath('photo', _selectedImage!.path));
-//     // }
-//
-//     try {
-//       var response = await request.send();
-//       var respStr = await response.stream.bytesToString();
-//       var data = jsonDecode(respStr);
-//
-//       if (response.statusCode == 200 && data['status'] == 'ok') {
-//         Fluttertoast.showToast(msg: "Sent Complaint successfully.");
-//         Navigator.push(context, MaterialPageRoute(builder: (context)=>viewreplypage(title: '',)));
-//       } else {
-//         Fluttertoast.showToast(msg: "Sent Complaint failed.");
-//       }
-//     } catch (e) {
-//       Fluttertoast.showToast(msg: "Error: $e");
-//     }
-//   }
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return WillPopScope(
-//       onWillPop: () async {
-//         Navigator.pushReplacement(
-//           context,
-//           MaterialPageRoute(builder: (context) => const viewreplypage(title: '',)),
-//         );
-//         return false;
-//       },
-//       child: Scaffold(
-//         appBar: AppBar(
-//           title: Text(widget.title),
-//           centerTitle: true,
-//           backgroundColor: Theme.of(context).colorScheme.primary,
-//           foregroundColor: Colors.white,
-//         ),
-//         body: SingleChildScrollView(
-//           padding: const EdgeInsets.all(16),
-//           child: Form(
-//             key: _formKey,
-//             child: Column(
-//               children: [
-//                 // _selectedImage != null
-//                 //     ? Image.file(_selectedImage!, height: 150)
-//                 //     : const Text("No Image Selected"),
-//                 // const SizedBox(height: 10),
-//                 // ElevatedButton(
-//                 //   onPressed: _chooseImage,
-//                 //   child: const Text("Choose Image"),
-//                 // ),
-//                 const SizedBox(height: 20),
-//                 TextFormField(
-//                   controller: _complainttextController,
-//                   maxLines: 2,
-//                   decoration: const InputDecoration(
-//
-//                     labelText: 'Enter Your Complaint',
-//                     border: OutlineInputBorder(),
-//                   ),
-//                   validator: (value) {
-//                     if (value == null || value.trim().isEmpty) {
-//                       return 'Compaint is required';
-//                     }
-//                     return null;
-//                   },
-//                 ),
-//
-//                 const SizedBox(height: 20),
-//                 ElevatedButton(
-//                   onPressed: () {
-//                     if (_formKey.currentState!.validate()) {
-//                       _sendData();
-//                     } else {
-//                       Fluttertoast.showToast(msg: "Please fix errors in the form");
-//                     }
-//                   },
-//                   child: const Text("Submit"),
-//                   style: ElevatedButton.styleFrom(
-//                     minimumSize: const Size.fromHeight(50),
-//                   ),
-//                 ),
-//               ],
-//             ),
-//           ),
-//         ),
-//       ),
-//     );
-//   }
-// }

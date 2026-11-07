@@ -919,9 +919,9 @@ class _AttendInterviewState extends State<AttendInterview> {
       ),
       body: isLoading
           ? SingleChildScrollView(
-            child: Center(
+        child: Center(
             child: CircularProgressIndicator()),
-          ) // Show loading spinner
+      ) // Show loading spinner
           : Column(
         children: [
           // Camera Preview in the top half of the screen
@@ -940,13 +940,13 @@ class _AttendInterviewState extends State<AttendInterview> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // if (questions_.isNotEmpty)
-                      Text(
-                        questions_[index],
-                        style: TextStyle(
-                          fontSize: 24.0,
-                          fontWeight: FontWeight.bold,
-                        ),
+                    Text(
+                      questions_[index],
+                      style: TextStyle(
+                        fontSize: 24.0,
+                        fontWeight: FontWeight.bold,
                       ),
+                    ),
                     SizedBox(height: 6.0),
                     if (questions_.isNotEmpty)
                       Column(

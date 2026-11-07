@@ -42,11 +42,11 @@ dependencies:
   glassmorphism:
   camera:
 
-
   flutter_sound: ^9.0.0
   flutter_sound_platform_interface: ^9.0.0
   permission_handler:
   flutter_local_notifications:
+  agora_rtc_engine: ^6.3.2
 
 
 #  easy_search_bar: ^2.4.0
@@ -54,6 +54,10 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
+
+
+
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

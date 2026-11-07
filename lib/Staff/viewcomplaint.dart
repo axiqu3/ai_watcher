@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ai_watcher/Staff/add_question.dart';
+import 'package:ai_watcher/Staff/send_scomplaint.dart';
 import 'package:ai_watcher/Staff/staff_home.dart';
 import 'package:ai_watcher/Staff/view_question.dart';
 import 'package:flutter/material.dart';
@@ -8,8 +9,6 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 
-import 'candidate_home.dart';
-import 'send complaint.dart';
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 const _primary      = Color(0xFF194569);
@@ -31,20 +30,20 @@ class viewreply extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const MaterialApp(
-      home: viewreplypage(title: 'View Users'),
+      home: viewcomplaint(title: 'View Users'),
     );
   }
 }
 
-class viewreplypage extends StatefulWidget {
-  const viewreplypage({super.key, required this.title});
+class viewcomplaint extends StatefulWidget {
+  const viewcomplaint({super.key, required this.title});
   final String title;
 
   @override
-  State<viewreplypage> createState() => _viewreplypageState();
+  State<viewcomplaint> createState() => _viewcomplaintState();
 }
 
-class _viewreplypageState extends State<viewreplypage> {
+class _viewcomplaintState extends State<viewcomplaint> {
   List<Map<String, dynamic>> users = [];
 
   @override
@@ -108,7 +107,7 @@ class _viewreplypageState extends State<viewreplypage> {
       onWillPop: () async {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const CandidateHome()),
+          MaterialPageRoute(builder: (context) => const StaffHome()),
         );
         return false;
       },
@@ -136,7 +135,7 @@ class _viewreplypageState extends State<viewreplypage> {
                   GestureDetector(
                     onTap: () => Navigator.pushReplacement(
                       context,
-                      MaterialPageRoute(builder: (_) => const CandidateHome()),
+                      MaterialPageRoute(builder: (_) => const StaffHome()),
                     ),
                     child: Container(
                       width: 38, height: 38,
@@ -241,7 +240,7 @@ class _viewreplypageState extends State<viewreplypage> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (context) => CandidateSentReplay(title: '')),
+                    builder: (context) => staffsndcomplaint(title: '')),
               );
             },
             backgroundColor: Colors.transparent,
@@ -471,20 +470,20 @@ class _viewreplypageState extends State<viewreplypage> {
 //   @override
 //   Widget build(BuildContext context) {
 //     return const MaterialApp(
-//       home: viewreplypage(title: 'View Users'),
+//       home: viewcomplaint(title: 'View Users'),
 //     );
 //   }
 // }
 //
-// class viewreplypage extends StatefulWidget {
-//   const viewreplypage({super.key, required this.title});
+// class viewcomplaint extends StatefulWidget {
+//   const viewcomplaint({super.key, required this.title});
 //   final String title;
 //
 //   @override
-//   State<viewreplypage> createState() => _viewreplypageState();
+//   State<viewcomplaint> createState() => _viewcomplaintState();
 // }
 //
-// class _viewreplypageState extends State<viewreplypage> {
+// class _viewcomplaintState extends State<viewcomplaint> {
 //   List<Map<String, dynamic>> users = [];
 //
 //   @override
